@@ -1,4 +1,4 @@
-manifestVersion: 1
+manifestVersion: "1.0.0"
 id: test-hello
 name: Hello Test
 tagline: Проверка индексации store

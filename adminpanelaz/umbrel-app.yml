@@ -1,4 +1,4 @@
-manifestVersion: 1
+manifestVersion: "1.0.0"
 id: adminpanelaz
 icon: https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/master/adminpanelaz/icon.svg
 category: networking
