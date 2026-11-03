@@ -1,0 +1,75 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      APP_HOST: adminpanelaz_server_1
+      APP_PORT: 8000
+
+  server:
+    image: python:3.12-slim
+    user: "0:0"
+    restart: unless-stopped
+    stop_grace_period: 30s
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      PYTHONUNBUFFERED: "1"
+      APP_PASSWORD: ${APP_PASSWORD}
+      APP_SEED: ${APP_SEED}
+    entrypoint: ["/bin/bash", "-lc"]
+    command:
+      - |
+        set -e
+        APP=/data/app
+
+        if [ ! -x "$APP/backend/.venv/bin/uvicorn" ]; then
+          echo "[adminpanelaz] первичная установка..."
+          apt-get update -qq || true
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git curl ca-certificates build-essential libffi-dev >/dev/null 2>&1 || true
+          rm -rf "$APP"
+          git clone --depth 1 https://github.com/Kirito0098/AdminPanelAZ.git "$APP"
+          cd "$APP/backend"
+          python -m venv .venv
+          .venv/bin/pip install -q --upgrade pip
+          .venv/bin/pip install -q -r requirements.txt
+          echo "[adminpanelaz] зависимости установлены"
+        fi
+
+        cd "$APP/backend"
+        mkdir -p data data/cidr data/cidr/list
+
+        if [ ! -f .env ]; then
+          echo "[adminpanelaz] создаю конфигурацию..."
+          cp .env.example .env 2>/dev/null || touch .env
+          SECRET=$(python -c "import secrets;print(secrets.token_urlsafe(48))")
+          {
+            echo ""
+            echo "# --- сгенерировано Umbrel ---"
+            echo "APP_ENV=production"
+            echo "SECRET_KEY=$SECRET"
+            echo "DATABASE_URL=sqlite:////data/app/backend/data/adminpanel.db"
+            echo "CIDR_DATABASE_URL=sqlite:////data/app/backend/data/cidr/cidr.db"
+            echo "DEFAULT_ADMIN_USERNAME=admin"
+            echo "DEFAULT_ADMIN_PASSWORD=${APP_PASSWORD:-admin}"
+            echo "DEFAULT_ADMIN_MUST_CHANGE_PASSWORD=false"
+            echo "ADMIN_MUST_CHANGE_PASSWORD=false"
+            echo "ENFORCE_PASSWORD_POLICY=false"
+            echo "AUTH_RATE_LIMIT_BACKEND=memory"
+            echo "API_RATE_LIMIT_BACKEND=memory"
+            echo "UVICORN_WORKERS=1"
+            echo "BACKEND_HOST=0.0.0.0"
+            echo "BACKEND_PORT=8000"
+            echo "ALLOW_INTERNAL_NODES=true"
+            echo "LOCAL_ANTIZAPRET_ENABLED=false"
+            echo "CORS_ORIGINS=http://127.0.0.1:8000,http://localhost:8000"
+            echo "AUTO_BACKUP_ENABLED=false"
+            echo "CIDR_DB_REFRESH_ENABLED=false"
+            echo "TRAFFIC_SYNC_ENABLED=false"
+            echo "RESOURCE_METRICS_ENABLED=false"
+            echo "TELEGRAM_ENABLED=false"
+          } >> .env
+        fi
+
+        echo "[adminpanelaz] запуск на 0.0.0.0:8000"
+        exec .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1

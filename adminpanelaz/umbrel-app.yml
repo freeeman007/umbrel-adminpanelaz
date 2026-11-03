@@ -1,0 +1,25 @@
+manifestVersion: 1
+id: adminpanelaz
+category: networking
+name: AdminPanelAZ
+version: "2.26.5"
+tagline: Панель управления AntiZapret VPN
+description: >-
+  Веб-панель для управления серверами AntiZapret: клиенты OpenVPN, WireGuard и
+  AmneziaWG, HA-группы с автоматическим переключением, CIDR-списки провайдеров,
+  маршрутизация, мониторинг узлов и статистика трафика.
+developer: Kirito0098
+website: https://github.com/Kirito0098/AdminPanelAZ
+dependencies: []
+repo: https://github.com/Kirito0098/AdminPanelAZ
+support: https://github.com/Kirito0098/AdminPanelAZ/issues
+gallery: []
+path: ""
+defaultUsername: admin
+deterministicPassword: true
+port: 8000
+submitter: freeeman007
+submission: https://github.com/freeeman007/umbrel-adminpanelaz
+releaseNotes: >-
+  Первая сборка для Umbrel: панель запускается в контейнере, данные и SQLite
+  хранятся в volume приложения на NVMe.
