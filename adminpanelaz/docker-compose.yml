@@ -40,9 +40,10 @@ services:
         if [ ! -f "$$APP/frontend/dist/index.html" ]; then
           echo "[adminpanelaz] распаковываю фронтенд..."
           mkdir -p "$$APP/frontend"
-          curl -fsSL https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/main/adminpanelaz/frontend-dist.tar.gz -o /tmp/dist.tar.gz
+          python3 -c "import urllib.request;urllib.request.urlretrieve('https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/main/adminpanelaz/frontend-dist.tar.gz','/tmp/dist.tar.gz')"
           tar -xzf /tmp/dist.tar.gz -C "$$APP/frontend"
           rm -f /tmp/dist.tar.gz
+          echo "[adminpanelaz] фронтенд: $$(ls "$$APP/frontend/dist" | wc -l) файлов"
         fi
 
         cd "$$APP/backend"
