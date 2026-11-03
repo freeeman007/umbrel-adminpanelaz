@@ -36,6 +36,15 @@ services:
           echo "[adminpanelaz] зависимости установлены"
         fi
 
+        # Готовый фронтенд (backend отдаёт его из frontend/dist)
+        if [ ! -f "$$APP/frontend/dist/index.html" ]; then
+          echo "[adminpanelaz] распаковываю фронтенд..."
+          mkdir -p "$$APP/frontend"
+          curl -fsSL https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/main/adminpanelaz/frontend-dist.tar.gz -o /tmp/dist.tar.gz
+          tar -xzf /tmp/dist.tar.gz -C "$$APP/frontend"
+          rm -f /tmp/dist.tar.gz
+        fi
+
         cd "$$APP/backend"
         mkdir -p data data/cidr data/cidr/list
 
