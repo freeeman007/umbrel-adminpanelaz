@@ -16,6 +16,10 @@ services:
     environment:
       PYTHONUNBUFFERED: "1"
       APP_PASSWORD: ${APP_PASSWORD}
+      NODE_AGENT_MTLS_DIR: /data/mtls
+      NODE_AGENT_MTLS_CA_CERT: /data/mtls/ca.crt
+      NODE_AGENT_MTLS_CLIENT_CERT: /data/mtls/panel.crt
+      NODE_AGENT_MTLS_CLIENT_KEY: /data/mtls/panel.key
     entrypoint: ["/bin/bash", "-lc"]
     command:
       - |
@@ -47,7 +51,8 @@ services:
         fi
 
         cd "$$APP/backend"
-        mkdir -p data data/cidr data/cidr/list
+        mkdir -p data data/cidr data/cidr/list /data/mtls
+        chmod 700 /data/mtls 2>/dev/null || true
 
         if [ ! -f .env ]; then
           echo "[adminpanelaz] создаю конфигурацию..."
