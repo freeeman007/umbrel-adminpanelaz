@@ -1,0 +1,24 @@
+manifestVersion: 1
+id: test-hello
+name: Hello Test
+tagline: Проверка индексации store
+icon: https://svgur.com/i/mvA.svg
+category: Development
+version: "1.0.0"
+port: 4000
+description: >-
+  Тестовое приложение для проверки, что Umbrel индексирует этот store.
+developer: Umbrel
+website: https://umbrel.com
+submitter: Umbrel
+submission: https://github.com/getumbrel/umbrel-hello-world-app
+repo: https://github.com/getumbrel/umbrel-hello-world-app
+support: https://github.com/getumbrel/umbrel-hello-world-app/issues
+gallery:
+  - https://i.imgur.com/yyVG0Jb.jpeg
+releaseNotes: >-
+  Test
+dependencies: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
