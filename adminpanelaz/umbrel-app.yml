@@ -3,7 +3,7 @@ id: adminpanelaz
 icon: https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/master/adminpanelaz/icon.svg
 category: networking
 name: AdminPanelAZ
-version: "2.26.5"
+version: "2.26.6"
 tagline: Панель управления AntiZapret VPN
 description: >-
   Веб-панель для управления серверами AntiZapret: клиенты OpenVPN, WireGuard и

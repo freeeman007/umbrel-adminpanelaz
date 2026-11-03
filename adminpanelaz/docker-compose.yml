@@ -16,42 +16,42 @@ services:
     environment:
       PYTHONUNBUFFERED: "1"
       APP_PASSWORD: ${APP_PASSWORD}
-      APP_SEED: ${APP_SEED}
     entrypoint: ["/bin/bash", "-lc"]
     command:
       - |
-        set -e
+        set -eu
         APP=/data/app
 
-        if [ ! -x "$APP/backend/.venv/bin/uvicorn" ]; then
+        if [ ! -x "$$APP/backend/.venv/bin/uvicorn" ]; then
           echo "[adminpanelaz] первичная установка..."
           apt-get update -qq || true
           DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git curl ca-certificates build-essential libffi-dev >/dev/null 2>&1 || true
-          rm -rf "$APP"
-          git clone --depth 1 https://github.com/Kirito0098/AdminPanelAZ.git "$APP"
-          cd "$APP/backend"
+          rm -rf "$$APP"
+          mkdir -p /data
+          git clone --depth 1 https://github.com/Kirito0098/AdminPanelAZ.git "$$APP"
+          cd "$$APP/backend"
           python -m venv .venv
           .venv/bin/pip install -q --upgrade pip
           .venv/bin/pip install -q -r requirements.txt
           echo "[adminpanelaz] зависимости установлены"
         fi
 
-        cd "$APP/backend"
+        cd "$$APP/backend"
         mkdir -p data data/cidr data/cidr/list
 
         if [ ! -f .env ]; then
           echo "[adminpanelaz] создаю конфигурацию..."
           cp .env.example .env 2>/dev/null || touch .env
-          SECRET=$(python -c "import secrets;print(secrets.token_urlsafe(48))")
+          SECRET=$$(python -c "import secrets;print(secrets.token_urlsafe(48))")
           {
             echo ""
             echo "# --- сгенерировано Umbrel ---"
             echo "APP_ENV=production"
-            echo "SECRET_KEY=$SECRET"
+            echo "SECRET_KEY=$$SECRET"
             echo "DATABASE_URL=sqlite:////data/app/backend/data/adminpanel.db"
             echo "CIDR_DATABASE_URL=sqlite:////data/app/backend/data/cidr/cidr.db"
             echo "DEFAULT_ADMIN_USERNAME=admin"
-            echo "DEFAULT_ADMIN_PASSWORD=${APP_PASSWORD:-admin}"
+            echo "DEFAULT_ADMIN_PASSWORD=$${APP_PASSWORD:-admin}"
             echo "DEFAULT_ADMIN_MUST_CHANGE_PASSWORD=false"
             echo "ADMIN_MUST_CHANGE_PASSWORD=false"
             echo "ENFORCE_PASSWORD_POLICY=false"
