@@ -1,5 +1,6 @@
 manifestVersion: 1
 id: adminpanelaz
+icon: https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/master/adminpanelaz/icon.svg
 category: networking
 name: AdminPanelAZ
 version: "2.26.5"
