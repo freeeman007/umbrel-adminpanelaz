@@ -70,6 +70,8 @@ services:
             echo "UVICORN_WORKERS=1"
             echo "BACKEND_HOST=0.0.0.0"
             echo "BACKEND_PORT=8000"
+            echo "SERVE_FRONTEND=true"
+            echo "FRONTEND_DIST_PATH=/data/app/frontend/dist"
             echo "ALLOW_INTERNAL_NODES=true"
             echo "LOCAL_ANTIZAPRET_ENABLED=false"
             echo "CORS_ORIGINS=http://127.0.0.1:8000,http://localhost:8000"
@@ -80,6 +82,12 @@ services:
             echo "TELEGRAM_ENABLED=false"
           } >> .env
         fi
+
+        # Догоняем недостающие ключи на уже созданном .env
+        grep -q '^SERVE_FRONTEND=' .env || {
+          echo "SERVE_FRONTEND=true" >> .env
+          echo "FRONTEND_DIST_PATH=/data/app/frontend/dist" >> .env
+        }
 
         echo "[adminpanelaz] запуск на 0.0.0.0:8000"
         exec .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
