@@ -26,6 +26,13 @@ services:
         set -eu
         APP=/data/app
 
+        # git нужен панели для проверки/подтягивания обновлений кода
+        if ! command -v git >/dev/null 2>&1; then
+          echo "[adminpanelaz] ставлю git..."
+          apt-get update -qq || true
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates >/dev/null 2>&1 || true
+        fi
+
         if [ ! -x "$$APP/backend/.venv/bin/uvicorn" ]; then
           echo "[adminpanelaz] первичная установка..."
           apt-get update -qq || true
