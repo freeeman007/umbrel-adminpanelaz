@@ -28,11 +28,12 @@ services:
         set -eu
         APP=/data/app
 
-        # git нужен панели для проверки/подтягивания обновлений кода
-        if ! command -v git >/dev/null 2>&1; then
-          echo "[adminpanelaz] ставлю git..."
+        # git нужен панели для проверки/подтягивания обновлений кода,
+        # iproute2/curl — для встроенной диагностики (/settings/tests)
+        if ! command -v git >/dev/null 2>&1 || ! command -v ss >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+          echo "[adminpanelaz] ставлю утилиты (git/iproute2/curl)..."
           apt-get update -qq || true
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates >/dev/null 2>&1 || true
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git curl iproute2 ca-certificates >/dev/null 2>&1 || true
         fi
 
         if [ ! -x "$$APP/backend/.venv/bin/uvicorn" ]; then
@@ -102,6 +103,10 @@ services:
           echo "SERVE_FRONTEND=true" >> .env
           echo "FRONTEND_DIST_PATH=/data/app/frontend/dist" >> .env
         }
+
+        # Диагностика не должна падать 500, если утилиты (systemctl/nginx) нет в контейнере
+        python3 -c "import urllib.request;urllib.request.urlretrieve('https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/main/adminpanelaz/patch-diagnostics.py','/tmp/patch-diagnostics.py')" 2>/dev/null || true
+        python3 /tmp/patch-diagnostics.py 2>/dev/null || true
 
         echo "[adminpanelaz] запуск на 0.0.0.0:8000"
         exec .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1

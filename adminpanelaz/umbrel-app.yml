@@ -22,5 +22,5 @@ port: 8000
 submitter: freeeman007
 submission: https://github.com/freeeman007/umbrel-adminpanelaz
 releaseNotes: >-
-  Первая сборка для Umbrel: панель запускается в контейнере, данные и SQLite
-  хранятся в volume приложения на NVMe.
+  2.26.12: встроенная диагностика (/settings/tests) больше не падает с 500,
+  если в контейнере нет systemctl/nginx; добавлены iproute2 и curl.
