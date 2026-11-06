@@ -3,7 +3,7 @@ id: adminpanelaz
 icon: https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/master/adminpanelaz/icon.svg
 category: networking
 name: AdminPanelAZ
-version: "2.26.12"
+version: "2.26.13"
 tagline: Панель управления AntiZapret VPN
 description: >-
   Веб-панель для управления серверами AntiZapret: клиенты OpenVPN, WireGuard и
@@ -22,5 +22,5 @@ port: 8000
 submitter: freeeman007
 submission: https://github.com/freeeman007/umbrel-adminpanelaz
 releaseNotes: >-
-  2.26.12: встроенная диагностика (/settings/tests) больше не падает с 500,
-  если в контейнере нет systemctl/nginx; добавлены iproute2 и curl.
+  2.26.13: диагностика в контейнере больше не падает с 500 и не считает
+  отсутствие systemd ошибкой — пункт помечается как «не применимо».
