@@ -20,6 +20,8 @@ services:
       NODE_AGENT_MTLS_CA_CERT: /data/mtls/ca.crt
       NODE_AGENT_MTLS_CLIENT_CERT: /data/mtls/panel.crt
       NODE_AGENT_MTLS_CLIENT_KEY: /data/mtls/panel.key
+      NODE_SYNC_AUTO_HEAL: "true"
+      NODE_SYNC_RECONCILE_INTERVAL_SECONDS: "600"
     entrypoint: ["/bin/bash", "-lc"]
     command:
       - |
