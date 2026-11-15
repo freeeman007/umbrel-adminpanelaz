@@ -87,6 +87,20 @@ services:
         export PATH="$$NODE_PREFIX/bin:$$PATH"
         command -v npm >/dev/null 2>&1 && echo "[adminpanelaz] node $$(node -v), npm $$(npm -v)"
 
+        # «Пересобрать панель» (/api/system/rebuild) делает только npm run
+        # build:all, без npm ci — на чистом контейнере падает с «vite: not found».
+        # Ставим зависимости фронтенда один раз (в /data/app/frontend, переживает
+        # перезапуск контейнера).
+        if [ -x "$$NODE_PREFIX/bin/npm" ] && [ ! -x "$$APP/frontend/node_modules/.bin/vite" ]; then
+          echo "[adminpanelaz] ставлю фронтенд-зависимости (npm ci)..."
+          if ( cd "$$APP/frontend" && npm ci --no-audit --no-fund >/tmp/npm-ci.log 2>&1 ); then
+            echo "[adminpanelaz] фронтенд-зависимости готовы"
+          else
+            echo "[adminpanelaz] ВНИМАНИЕ: npm ci не удался, подробности /tmp/npm-ci.log"
+            tail -5 /tmp/npm-ci.log 2>/dev/null || true
+          fi
+        fi
+
         chmod 700 /data/mtls 2>/dev/null || true
 
         if [ ! -f .env ]; then

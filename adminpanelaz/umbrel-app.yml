@@ -3,7 +3,7 @@ id: adminpanelaz
 icon: https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/master/adminpanelaz/icon.svg
 category: networking
 name: AdminPanelAZ
-version: "2.26.14"
+version: "2.26.15"
 tagline: Панель управления AntiZapret VPN
 description: >-
   Веб-панель для управления серверами AntiZapret: клиенты OpenVPN, WireGuard и
@@ -22,6 +22,6 @@ port: 8000
 submitter: freeeman007
 submission: https://github.com/freeeman007/umbrel-adminpanelaz
 releaseNotes: >-
-  2.26.14: в контейнер ставится Node.js 22 (/data/node), поэтому «Обновить
-  панель» больше не падает с «No such file or directory: 'npm'» — npm ci и
-  npm run build:all теперь отрабатывают внутри контейнера.
+  2.26.15: в контейнер ставится Node.js 22 (/data/node) и один раз
+  зависимости фронтенда (npm ci). «Обновить панель» и «Пересобрать панель»
+  больше не падают с «No such file or directory: 'npm'» и «vite: not found».
