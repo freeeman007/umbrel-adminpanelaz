@@ -62,6 +62,31 @@ services:
 
         cd "$$APP/backend"
         mkdir -p data data/cidr data/cidr/list /data/mtls
+        # Node.js нужен для самообновления панели: system_update.py выполняет
+        # `npm ci` и `npm run build:all`. В python:3.12-slim npm нет, из-за чего
+        # «Обновить панель» падало с [Errno 2] No such file or directory: 'npm'.
+        # Ставим официальный Node в /data/node (переживает перезапуск контейнера).
+        NODE_PREFIX=/data/node
+        if [ ! -x "$$NODE_PREFIX/bin/npm" ]; then
+          case "$$(uname -m)" in
+            aarch64|arm64) NODE_ARCH=arm64 ;;
+            *) NODE_ARCH=x64 ;;
+          esac
+          NODE_VER=22.23.5
+          echo "[adminpanelaz] ставлю Node.js $$NODE_VER/$$NODE_ARCH для самообновления..."
+          mkdir -p "$$NODE_PREFIX"
+          if curl -fsSL --retry 3 --max-time 300 -o /tmp/node.tar.gz \
+               "https://nodejs.org/dist/v$$NODE_VER/node-v$$NODE_VER-linux-$$NODE_ARCH.tar.gz"; then
+            tar -xzf /tmp/node.tar.gz -C /tmp
+            cp -a "/tmp/node-v$$NODE_VER-linux-$$NODE_ARCH/." "$$NODE_PREFIX/"
+            rm -rf /tmp/node.tar.gz "/tmp/node-v$$NODE_VER-linux-$$NODE_ARCH"
+          else
+            echo "[adminpanelaz] ВНИМАНИЕ: Node.js не скачался — самообновление упадёт на npm"
+          fi
+        fi
+        export PATH="$$NODE_PREFIX/bin:$$PATH"
+        command -v npm >/dev/null 2>&1 && echo "[adminpanelaz] node $$(node -v), npm $$(npm -v)"
+
         chmod 700 /data/mtls 2>/dev/null || true
 
         if [ ! -f .env ]; then
