@@ -147,5 +147,9 @@ services:
         python3 -c "import urllib.request;urllib.request.urlretrieve('https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/main/adminpanelaz/patch-diagnostics.py','/tmp/patch-diagnostics.py')" 2>/dev/null || true
         python3 /tmp/patch-diagnostics.py 2>/dev/null || true
 
+        # cert_sync: занятый слот узла — не ошибка, и без повального фолбэка по клиентам
+        python3 -c "import urllib.request;urllib.request.urlretrieve('https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/main/adminpanelaz/patch-cert-sync-busy.py','/tmp/patch-cert-sync-busy.py')" 2>/dev/null || true
+        python3 /tmp/patch-cert-sync-busy.py 2>/dev/null || true
+
         echo "[adminpanelaz] запуск на 0.0.0.0:8000"
         exec .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
