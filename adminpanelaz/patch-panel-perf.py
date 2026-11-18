@@ -255,6 +255,43 @@ def _patch_awg2_negative_cache() -> str:
     return f"ок (перевешено в {rebound} модулях)"
 
 
+def _patch_overview_skip_offline() -> str:
+    """Узел offline не опрашиваем: иначе connect висит 20+ с и вся страница ждёт."""
+    from app.services import monitoring_overview as mo
+
+    original = getattr(mo, "get_adapter_for_node", None)
+    if original is None:
+        return "нет get_adapter_for_node"
+    if getattr(original, "hermes_offline_skip", False):
+        return "уже включён"
+
+    try:
+        from app.models import NodeStatus
+    except Exception:  # noqa: BLE001
+        return "нет NodeStatus"
+
+    class _OfflineAdapter:
+        """Заглушка: любое обращение к узлу сразу падает, без сети."""
+
+        def __init__(self, node):
+            self._node = node
+
+        def __getattr__(self, name):
+            raise RuntimeError(
+                f"узел {getattr(self._node, 'name', '?')} offline — данные с узла не запрашиваются"
+            )
+
+    @functools.wraps(original)
+    def get_adapter_for_node(node):
+        if getattr(node, "status", None) == NodeStatus.offline:
+            return _OfflineAdapter(node)
+        return original(node)
+
+    get_adapter_for_node.hermes_offline_skip = True
+    mo.get_adapter_for_node = get_adapter_for_node
+    return "ок"
+
+
 def _patch_active_web_session() -> str:
     from datetime import datetime, timedelta, timezone
 
@@ -475,6 +512,7 @@ def apply_hermes_patches(app) -> None:
         ("awg2-negative-cache", _patch_awg2_negative_cache),
         ("active-web-session", _patch_active_web_session),
         ("cert-sync-quiet", _patch_cert_sync_quiet),
+        ("overview-skip-offline", _patch_overview_skip_offline),
     ):
         try:
             results[label] = func()
