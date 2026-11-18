@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import copy
 import functools
+import hashlib
 import logging
 import sys
 import threading
@@ -321,76 +322,84 @@ class _CacheEpochMiddleware:
         await self.app(scope, receive, send)
 
 
-def _patch_list_configs_response_cache(app) -> str:
-    """Короткий кеш ответа /api/configs: фронт запрашивает его 8–9 раз на страницу."""
-    from app.routers import configs as configs_router
+class _ResponseCacheMiddleware:
+    """Короткий кеш GET-ответов: фронт дёргает одни и те же данные пачкой."""
 
-    original = getattr(configs_router, "list_configs", None)
-    if original is None:
-        return "нет list_configs"
-    if getattr(original, "hermes_response_cache", False):
-        return "как есть"
-
-    store: dict = {}
-    lock = threading.Lock()
-    ttl = 3.0
-
-    @functools.wraps(original)
-    def list_configs(include_files=False, tag_ids=None, db=None, current_user=None):
-        key = (
-            _current_epoch(),
-            getattr(current_user, "id", None),
-            bool(include_files),
-            tuple(sorted(int(t) for t in (tag_ids or []))),
-        )
-        now = time.monotonic()
-        with lock:
-            hit = store.get(key)
-            if hit and hit[0] > now:
-                return copy.deepcopy(hit[1])
-        value = original(
-            include_files=include_files,
-            tag_ids=tag_ids if tag_ids is not None else [],
-            db=db,
-            current_user=current_user,
-        )
-        with lock:
-            store[key] = (now + ttl, copy.deepcopy(value))
-            if len(store) > 256:
-                store.clear()
-        return value
-
-    list_configs.hermes_response_cache = True
-    configs_router.list_configs = list_configs
-    replaced = 0
-    for route in getattr(app, "routes", []):
-        path = (getattr(route, "path", "") or "").rstrip("/")
-        methods = getattr(route, "methods", None) or set()
-        if "GET" not in methods or not path.endswith("/configs"):
-            continue
-        endpoint = getattr(route, "endpoint", None)
-        if endpoint is not original and getattr(endpoint, "__name__", "") != "list_configs":
-            continue
-        route.endpoint = list_configs
-        # FastAPI вызывает обработчик через route.dependant.call — без этой
-        # подмены обёртка не заработает.
-        dependant = getattr(route, "dependant", None)
-        if dependant is not None:
-            dependant.call = list_configs
-        replaced += 1
-    all_paths = [getattr(route, "path", "") or "" for route in getattr(app, "routes", [])]
-    seen = [p for p in all_paths if "configs" in p]
-    return (
-        f"ок (заменено: {replaced}, всего маршрутов: {len(all_paths)}, "
-        f"configs: {len(seen)}, первые: {all_paths[:6]})"
+    RULES = (
+        ("/api/configs", 3.0),
+        ("/api/nodes", 5.0),
+        ("/api/client-access/policies", 3.0),
+        ("/api/monitoring/overview", 3.0),
     )
+
+    def __init__(self, app):
+        self.app = app
+        self.store: dict = {}
+        self.lock = threading.Lock()
+
+    @staticmethod
+    def _auth_key(scope):
+        for name, value in scope.get("headers") or []:
+            if name in (b"authorization", b"cookie"):
+                return hashlib.sha1(name + b":" + value).hexdigest()
+        return None
+
+    def _ttl(self, path):
+        for prefix, ttl in self.RULES:
+            if path == prefix or path.startswith(prefix + "/"):
+                return ttl
+        return None
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http" or (scope.get("method") or "").upper() != "GET":
+            await self.app(scope, receive, send)
+            return
+        path = scope.get("path") or ""
+        if "/stream" in path:
+            await self.app(scope, receive, send)
+            return
+        ttl = self._ttl(path)
+        auth = self._auth_key(scope) if ttl else None
+        if not ttl or not auth:
+            await self.app(scope, receive, send)
+            return
+
+        key = (path, scope.get("query_string") or b"", auth, _current_epoch())
+        now = time.monotonic()
+        with self.lock:
+            hit = self.store.get(key)
+            if hit and hit[0] > now:
+                await send({"type": "http.response.start", "status": 200, "headers": hit[1]})
+                await send({"type": "http.response.body", "body": hit[2], "more_body": False})
+                return
+
+        captured = {"status": 0, "headers": [], "body": b"", "encoded": False}
+
+        async def send_wrapper(message):
+            mtype = message.get("type")
+            if mtype == "http.response.start":
+                captured["status"] = message.get("status") or 0
+                captured["headers"] = message.get("headers") or []
+                captured["encoded"] = any(
+                    k.lower() == b"content-encoding" for k, _ in captured["headers"]
+                )
+            elif mtype == "http.response.body":
+                captured["body"] += message.get("body") or b""
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+        if captured["status"] == 200 and not captured["encoded"] and captured["body"]:
+            with self.lock:
+                self.store[key] = (now + ttl, captured["headers"], captured["body"])
+                if len(self.store) > 128:
+                    self.store.clear()
 
 
 def apply_hermes_patches(app) -> None:
     results = {}
     for label, func in (
         ("profile-files-cache", _patch_profile_files_cache),
-        ("list-configs-response", lambda: _patch_list_configs_response_cache(app)),
         ("local-ip-cache", _patch_local_ip_cache),
         ("awg2-negative-cache", _patch_awg2_negative_cache),
         ("active-web-session", _patch_active_web_session),
@@ -399,11 +408,15 @@ def apply_hermes_patches(app) -> None:
             results[label] = func()
         except Exception as exc:  # noqa: BLE001
             results[label] = f"ошибка: {exc}"
-    try:
-        app.add_middleware(_CacheEpochMiddleware)
-        results["cache-epoch-middleware"] = "ок"
-    except Exception as exc:  # noqa: BLE001
-        results["cache-epoch-middleware"] = f"ошибка: {exc}"
+    for label, middleware in (
+        ("response-cache-middleware", _ResponseCacheMiddleware),
+        ("cache-epoch-middleware", _CacheEpochMiddleware),
+    ):
+        try:
+            app.add_middleware(middleware)
+            results[label] = "ок"
+        except Exception as exc:  # noqa: BLE001
+            results[label] = f"ошибка: {exc}"
     print(f"[patch-panel-perf] хуки: {results}", flush=True)
 '''
 

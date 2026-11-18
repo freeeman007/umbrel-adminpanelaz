@@ -113,14 +113,26 @@ def _run_panel_perf_patch() -> None:
     import time
     import urllib.request
 
-    # cache-buster: raw.githubusercontent кеширует файл до 5 минут
-    url = (
+    # api.github.com отдаёт содержимое без кеша CDN (raw кеширует до 5 минут)
+    api_url = (
+        "https://api.github.com/repos/freeeman007/umbrel-adminpanelaz/contents/"
+        "adminpanelaz/patch-panel-perf.py?ref=main"
+    )
+    raw_url = (
         "https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/main/"
         f"adminpanelaz/patch-panel-perf.py?ts={int(time.time())}"
     )
     try:
-        with urllib.request.urlopen(url, timeout=30) as resp:
-            data = resp.read()
+        try:
+            import base64
+            import json
+
+            with urllib.request.urlopen(api_url, timeout=30) as resp:
+                payload = json.loads(resp.read())
+            data = base64.b64decode(payload["content"])
+        except Exception:
+            with urllib.request.urlopen(raw_url, timeout=30) as resp:
+                data = resp.read()
         with tempfile.NamedTemporaryFile("wb", suffix=".py", delete=False) as fh:
             fh.write(data)
             path = fh.name
