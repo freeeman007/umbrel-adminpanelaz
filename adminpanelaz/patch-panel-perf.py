@@ -378,7 +378,12 @@ def _patch_list_configs_response_cache(app) -> str:
         if dependant is not None:
             dependant.call = list_configs
         replaced += 1
-    return f"ок (эндпоинтов заменено: {replaced})"
+    seen = [
+        (getattr(route, "path", ""), sorted(getattr(route, "methods", None) or []))
+        for route in getattr(app, "routes", [])
+        if "configs" in (getattr(route, "path", "") or "")
+    ]
+    return f"ок (эндпоинтов заменено: {replaced}, маршрутов configs: {len(seen)}, пример: {seen[:3]})"
 
 
 def apply_hermes_patches(app) -> None:

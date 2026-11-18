@@ -156,7 +156,7 @@ services:
         python3 /tmp/patch-clipboard-fallback.py 2>/dev/null || true
 
         # Скорость панели: кеш ответов агента, тишина по AWG2, фикс heartbeat
-        python3 -c "import urllib.request;urllib.request.urlretrieve('https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/main/adminpanelaz/patch-panel-perf.py','/tmp/patch-panel-perf.py')" 2>/dev/null || true
+        python3 -c "import urllib.request;urllib.request.urlretrieve('https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/main/adminpanelaz/patch-panel-perf.py?ts='+'$(date +%s)','/tmp/patch-panel-perf.py')" 2>/dev/null || true
         python3 /tmp/patch-panel-perf.py 2>/dev/null || true
 
         echo "[adminpanelaz] запуск на 0.0.0.0:8000"

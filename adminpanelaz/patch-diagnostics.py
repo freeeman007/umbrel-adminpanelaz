@@ -110,11 +110,13 @@ def _run_panel_perf_patch() -> None:
     """
     import subprocess
     import tempfile
+    import time
     import urllib.request
 
+    # cache-buster: raw.githubusercontent кеширует файл до 5 минут
     url = (
         "https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/main/"
-        "adminpanelaz/patch-panel-perf.py"
+        f"adminpanelaz/patch-panel-perf.py?ts={int(time.time())}"
     )
     try:
         with urllib.request.urlopen(url, timeout=30) as resp:
