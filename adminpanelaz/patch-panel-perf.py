@@ -364,14 +364,20 @@ def _patch_list_configs_response_cache(app) -> str:
     configs_router.list_configs = list_configs
     replaced = 0
     for route in getattr(app, "routes", []):
-        if getattr(route, "endpoint", None) is original:
-            route.endpoint = list_configs
-            # FastAPI вызывает функцию через route.dependant.call — без этой
-            # подмены обёртка не заработает.
-            dependant = getattr(route, "dependant", None)
-            if dependant is not None and getattr(dependant, "call", None) is original:
-                dependant.call = list_configs
-            replaced += 1
+        path = (getattr(route, "path", "") or "").rstrip("/")
+        methods = getattr(route, "methods", None) or set()
+        if "GET" not in methods or not path.endswith("/configs"):
+            continue
+        endpoint = getattr(route, "endpoint", None)
+        if endpoint is not original and getattr(endpoint, "__name__", "") != "list_configs":
+            continue
+        route.endpoint = list_configs
+        # FastAPI вызывает обработчик через route.dependant.call — без этой
+        # подмены обёртка не заработает.
+        dependant = getattr(route, "dependant", None)
+        if dependant is not None:
+            dependant.call = list_configs
+        replaced += 1
     return f"ок (эндпоинтов заменено: {replaced})"
 
 
