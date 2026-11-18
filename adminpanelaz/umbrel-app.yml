@@ -3,7 +3,7 @@ id: adminpanelaz
 icon: https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/master/adminpanelaz/icon.svg
 category: networking
 name: AdminPanelAZ
-version: "2.26.17"
+version: "2.26.18"
 tagline: Панель управления AntiZapret VPN
 description: >-
   Веб-панель для управления серверами AntiZapret: клиенты OpenVPN, WireGuard и
@@ -22,6 +22,14 @@ port: 8000
 submitter: freeeman007
 submission: https://github.com/freeeman007/umbrel-adminpanelaz
 releaseNotes: >-
+  2.26.18: панель открывается и работает заметно быстрее. Список клиентов
+  больше не дёргает агента узла на каждый запрос — карта файлов профилей и
+  локальных IP кешируется на 20 секунд и сбрасывается при любом изменении,
+  а очередь к узлу (один слот) перестала собираться из дублей. Узлы без
+  AZ-AWG2 больше не опрашиваются каждые несколько минут: ответ «не
+  установлен» запоминается на 10 минут, в лог пишется одна строка вместо
+  постоянного шума. Починен heartbeat веб-сессий (StaleDataError при
+  очистке устаревших сессий).
   2.26.17: кнопки «Копировать» работают и при открытии панели по HTTP
   (http://ip:8000) — если браузер не даёт clipboard API вне secure context,
   используется запасной путь через textarea. Исправлены «Не удалось
