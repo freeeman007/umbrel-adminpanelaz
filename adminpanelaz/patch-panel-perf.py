@@ -185,6 +185,14 @@ def _is_awg2_missing(exc) -> bool:
     return "awg2" in lowered and ("не установлен" in lowered or "not installed" in lowered)
 
 
+def _is_node_busy(exc) -> bool:
+    """Слот узла занят фоновым воркером (node_http_gate) — это не дефект AWG2."""
+    name = type(exc).__name__
+    if name in ("NodeHttpBusy", "NodeHttpTimeout"):
+        return True
+    return "busy" in str(exc).lower()
+
+
 def _patch_awg2_negative_cache() -> str:
     from app.services import awg2_noc
 
@@ -196,6 +204,7 @@ def _patch_awg2_negative_cache() -> str:
 
     negative: dict[str, float] = {}
     announced: set[str] = set()
+    last_log: dict[str, float] = {}
     lock = threading.Lock()
 
     @functools.wraps(awg2_noc.fetch_awg2_peers_for_adapter)
@@ -219,8 +228,16 @@ def _patch_awg2_negative_cache() -> str:
                         key,
                         int(AWG2_NEGATIVE_TTL_SECONDS // 60),
                     )
+            elif _is_node_busy(exc):
+                with lock:
+                    negative[key] = now + 60.0
             else:
-                log.warning("awg2 monitoring failed for %s: %s", adapter, exc)
+                with lock:
+                    should_log = last_log.get(key, 0.0) <= now
+                    if should_log:
+                        last_log[key] = now + 600.0
+                if should_log:
+                    log.warning("awg2 monitoring failed for %s: %s", adapter, exc)
             return []
         with lock:
             negative.pop(key, None)
@@ -296,7 +313,10 @@ class _CacheEpochMiddleware:
             "HEAD",
             "OPTIONS",
         ):
-            if (scope.get("path") or "").startswith("/api/"):
+            path = scope.get("path") or ""
+            # Служебные POST (auth/refresh, stream-ticket, heartbeat, опрос
+            # уведомлений) данные не меняют — кеш ими не сбрасываем.
+            if path.startswith(("/api/configs", "/api/nodes")):
                 _bump_epoch()
         await self.app(scope, receive, send)
 
