@@ -255,6 +255,49 @@ def _patch_awg2_negative_cache() -> str:
     return f"ок (перевешено в {rebound} модулях)"
 
 
+def _patch_node_connect_timeout() -> str:
+    """Мёртвый узел не должен держать слот и страницу 20 с: connect не дольше 4 с."""
+    import httpx
+
+    from app.services import node_adapter as na
+
+    original = getattr(na, "node_agent_request", None)
+    if original is None:
+        return "нет node_agent_request"
+    if getattr(original, "hermes_connect_cap", False):
+        return "уже включён"
+
+    cap = 4.0
+
+    def _tighten(timeout):
+        try:
+            if timeout is None:
+                return httpx.Timeout(connect=cap, read=None, write=None, pool=None)
+            if isinstance(timeout, httpx.Timeout):
+                connect = timeout.connect if timeout.connect is not None else cap
+                return httpx.Timeout(
+                    connect=min(connect, cap),
+                    read=timeout.read,
+                    write=timeout.write,
+                    pool=timeout.pool,
+                )
+            value = float(timeout)
+            return httpx.Timeout(connect=min(value, cap), read=value, write=value, pool=value)
+        except Exception:  # noqa: BLE001
+            return timeout
+
+    @functools.wraps(original)
+    def node_agent_request(*args, **kwargs):
+        if "timeout" in kwargs:
+            kwargs["timeout"] = _tighten(kwargs["timeout"])
+        return original(*args, **kwargs)
+
+    node_agent_request.hermes_connect_cap = True
+    bound = _rebind(original, node_agent_request, "node_agent_request")
+    na.node_agent_request = node_agent_request
+    return f"ок (перевешено в {bound} модулях)"
+
+
 def _patch_overview_skip_offline() -> str:
     """Узел offline не опрашиваем: иначе connect висит 20+ с и вся страница ждёт."""
     from app.services import monitoring_overview as mo
@@ -513,6 +556,7 @@ def apply_hermes_patches(app) -> None:
         ("active-web-session", _patch_active_web_session),
         ("cert-sync-quiet", _patch_cert_sync_quiet),
         ("overview-skip-offline", _patch_overview_skip_offline),
+        ("node-connect-cap", _patch_node_connect_timeout),
     ):
         try:
             results[label] = func()
