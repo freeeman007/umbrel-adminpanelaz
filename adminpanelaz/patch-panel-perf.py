@@ -47,6 +47,7 @@ import hashlib
 import logging
 import sys
 import threading
+import urllib.parse
 import time
 
 log = logging.getLogger("uvicorn.error")
@@ -106,6 +107,14 @@ def _cached(ttl: float, key_fn, label: str):
         return wrapper
 
     return decorator
+
+
+def _host_of(url: str) -> str:
+    try:
+        parts = urllib.parse.urlsplit(str(url))
+        return parts.netloc or str(url)
+    except Exception:  # noqa: BLE001
+        return str(url)
 
 
 def _rebind(original, replacement, name: str) -> int:
@@ -286,11 +295,35 @@ def _patch_node_connect_timeout() -> str:
         except Exception:  # noqa: BLE001
             return timeout
 
+    from app.services.node_link_errors import CODE_TIMEOUT, CODE_UNREACHABLE, raise_link_error
+
+    down: dict = {}
+    lock = threading.Lock()
+    down_ttl = 30.0
+
     @functools.wraps(original)
     def node_agent_request(*args, **kwargs):
+        url = args[1] if len(args) > 1 else kwargs.get("url", "")
+        host = _host_of(url)
+        now = time.monotonic()
+        with lock:
+            until = down.get(host, 0.0)
+        if until > now:
+            raise_link_error(
+                CODE_UNREACHABLE,
+                f"Агент узла {host} не отвечает — повтор через {int(until - now) + 1} с",
+            )
         if "timeout" in kwargs:
             kwargs["timeout"] = _tighten(kwargs["timeout"])
-        return original(*args, **kwargs)
+        try:
+            return original(*args, **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            detail = getattr(exc, "detail", None)
+            code = detail.get("code") if isinstance(detail, dict) else None
+            if code in (CODE_UNREACHABLE, CODE_TIMEOUT):
+                with lock:
+                    down[host] = time.monotonic() + down_ttl
+            raise
 
     node_agent_request.hermes_connect_cap = True
     bound = _rebind(original, node_agent_request, "node_agent_request")
