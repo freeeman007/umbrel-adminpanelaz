@@ -321,10 +321,65 @@ class _CacheEpochMiddleware:
         await self.app(scope, receive, send)
 
 
+def _patch_list_configs_response_cache(app) -> str:
+    """Короткий кеш ответа /api/configs: фронт запрашивает его 8–9 раз на страницу."""
+    from app.routers import configs as configs_router
+
+    original = getattr(configs_router, "list_configs", None)
+    if original is None:
+        return "нет list_configs"
+    if getattr(original, "hermes_response_cache", False):
+        return "как есть"
+
+    store: dict = {}
+    lock = threading.Lock()
+    ttl = 3.0
+
+    @functools.wraps(original)
+    def list_configs(include_files=False, tag_ids=None, db=None, current_user=None):
+        key = (
+            _current_epoch(),
+            getattr(current_user, "id", None),
+            bool(include_files),
+            tuple(sorted(int(t) for t in (tag_ids or []))),
+        )
+        now = time.monotonic()
+        with lock:
+            hit = store.get(key)
+            if hit and hit[0] > now:
+                return copy.deepcopy(hit[1])
+        value = original(
+            include_files=include_files,
+            tag_ids=tag_ids if tag_ids is not None else [],
+            db=db,
+            current_user=current_user,
+        )
+        with lock:
+            store[key] = (now + ttl, copy.deepcopy(value))
+            if len(store) > 256:
+                store.clear()
+        return value
+
+    list_configs.hermes_response_cache = True
+    configs_router.list_configs = list_configs
+    replaced = 0
+    for route in getattr(app, "routes", []):
+        if getattr(route, "endpoint", None) is original:
+            route.endpoint = list_configs
+            # FastAPI вызывает функцию через route.dependant.call — без этой
+            # подмены обёртка не заработает.
+            dependant = getattr(route, "dependant", None)
+            if dependant is not None and getattr(dependant, "call", None) is original:
+                dependant.call = list_configs
+            replaced += 1
+    return f"ок (эндпоинтов заменено: {replaced})"
+
+
 def apply_hermes_patches(app) -> None:
     results = {}
     for label, func in (
         ("profile-files-cache", _patch_profile_files_cache),
+        ("list-configs-response", lambda: _patch_list_configs_response_cache(app)),
         ("local-ip-cache", _patch_local_ip_cache),
         ("awg2-negative-cache", _patch_awg2_negative_cache),
         ("active-web-session", _patch_active_web_session),
@@ -340,6 +395,14 @@ def apply_hermes_patches(app) -> None:
         results["cache-epoch-middleware"] = f"ошибка: {exc}"
     print(f"[patch-panel-perf] хуки: {results}", flush=True)
 '''
+
+CONFIGS_PATH = os.path.join(TARGET_DIR, "routers", "configs.py")
+OWNER_MARK = "HERMES-PATCH: owner без N+1"
+OWNER_OLD = "    owner = db.query(User).filter(User.id == config.owner_id).first()"
+OWNER_NEW = (
+    "    # HERMES-PATCH: owner без N+1 (identity map вместо запроса на каждый конфиг)\n"
+    "    owner = db.get(User, config.owner_id) if config.owner_id is not None else None"
+)
 
 MAIN_APPEND = f'''
 # {MARKER}
@@ -374,13 +437,29 @@ def hook_main() -> str:
     return "хук добавлен в main.py"
 
 
+def patch_owner_lookup() -> str:
+    """_to_response тянул пользователя отдельным запросом на каждый конфиг."""
+    if not os.path.isfile(CONFIGS_PATH):
+        return f"нет {CONFIGS_PATH}"
+    with open(CONFIGS_PATH, encoding="utf-8") as fh:
+        text = fh.read()
+    if OWNER_MARK in text:
+        return "уже применён"
+    if OWNER_OLD not in text:
+        return "якорь не найден"
+    with open(CONFIGS_PATH, "w", encoding="utf-8") as fh:
+        fh.write(text.replace(OWNER_OLD, OWNER_NEW, 1))
+    return "применён"
+
+
 def main() -> int:
     print(f"[patch-panel-perf] {write_module()}")
     print(f"[patch-panel-perf] {hook_main()}")
+    print(f"[patch-panel-perf] owner lookup: {patch_owner_lookup()}")
     import py_compile
     import tempfile
 
-    for path in (MODULE_PATH, MAIN_PATH):
+    for path in (MODULE_PATH, MAIN_PATH, CONFIGS_PATH):
         if not os.path.isfile(path):
             continue
         with tempfile.NamedTemporaryFile(suffix=".pyc", delete=True) as tmp:
