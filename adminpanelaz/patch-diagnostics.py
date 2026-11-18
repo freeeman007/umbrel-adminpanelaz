@@ -101,5 +101,39 @@ def main() -> int:
     return 0
 
 
+def _run_panel_perf_patch() -> None:
+    """HERMES-PATCH: подтянуть патч скорости панели (кеш, AWG2, heartbeat).
+
+    Отдельный скрипт patch-panel-perf.py лежит в сторе; здесь только запуск,
+    чтобы ускоряющий патч применялся и на старых сборках контейнера, где
+    entrypoint ещё не знает про него. Ошибки не валят запуск панели.
+    """
+    import subprocess
+    import tempfile
+    import urllib.request
+
+    url = (
+        "https://raw.githubusercontent.com/freeeman007/umbrel-adminpanelaz/main/"
+        "adminpanelaz/patch-panel-perf.py"
+    )
+    try:
+        with urllib.request.urlopen(url, timeout=30) as resp:
+            data = resp.read()
+        with tempfile.NamedTemporaryFile("wb", suffix=".py", delete=False) as fh:
+            fh.write(data)
+            path = fh.name
+        result = subprocess.run(
+            [sys.executable, path], capture_output=True, text=True, timeout=180
+        )
+        for line in (result.stdout or "").strip().splitlines():
+            print(line)
+        for line in (result.stderr or "").strip().splitlines()[:3]:
+            print(f"[patch-diagnostics] panel-perf: {line}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[patch-diagnostics] panel-perf пропущен: {exc}")
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    code = main()
+    _run_panel_perf_patch()
+    raise SystemExit(code)
