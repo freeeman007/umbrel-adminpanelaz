@@ -44,10 +44,11 @@ from __future__ import annotations
 import copy
 import functools
 import logging
+import sys
 import threading
 import time
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger("uvicorn.error")
 
 PROFILE_FILES_TTL_SECONDS = 20.0
 LOCAL_IP_TTL_SECONDS = 20.0
@@ -106,6 +107,21 @@ def _cached(ttl: float, key_fn, label: str):
     return decorator
 
 
+def _rebind(original, replacement, name: str) -> int:
+    """Перевешивает функцию во всех модулях, куда её импортировали напрямую."""
+    count = 0
+    for module in list(sys.modules.values()):
+        if module is None:
+            continue
+        try:
+            if getattr(module, name, None) is original:
+                setattr(module, name, replacement)
+                count += 1
+        except Exception:  # noqa: BLE001
+            continue
+    return count
+
+
 def _patch_profile_files_cache() -> str:
     from app.routers import configs as configs_router
 
@@ -154,10 +170,10 @@ def _patch_local_ip_cache() -> str:
         )
         return (_adapter_key(adapter), node_id, names)
 
-    client_local_ip.build_client_local_ip_map = _cached(
-        LOCAL_IP_TTL_SECONDS, key_fn, "client-local-ip"
-    )(original)
-    return "ок"
+    cached = _cached(LOCAL_IP_TTL_SECONDS, key_fn, "client-local-ip")(original)
+    client_local_ip.build_client_local_ip_map = cached
+    rebound = _rebind(original, cached, "build_client_local_ip_map")
+    return f"ок (перевешено в {rebound} модулях)"
 
 
 def _is_awg2_missing(exc) -> bool:
@@ -198,13 +214,13 @@ def _patch_awg2_negative_cache() -> str:
                     first_time = key not in announced
                     announced.add(key)
                 if first_time:
-                    logger.info(
+                    log.info(
                         "hermes-panel-patch: AWG2 не установлен на %s — опрос приостановлен на %d мин",
                         key,
                         int(AWG2_NEGATIVE_TTL_SECONDS // 60),
                     )
             else:
-                logger.warning("awg2 monitoring failed for %s: %s", adapter, exc)
+                log.warning("awg2 monitoring failed for %s: %s", adapter, exc)
             return []
         with lock:
             negative.pop(key, None)
@@ -215,16 +231,10 @@ def _patch_awg2_negative_cache() -> str:
             return []
 
     fetch_awg2_peers_for_adapter.hermes_awg2_cache = True
+    original_fetch = awg2_noc.fetch_awg2_peers_for_adapter
     awg2_noc.fetch_awg2_peers_for_adapter = fetch_awg2_peers_for_adapter
-
-    try:
-        from app.services import connection_history, traffic
-        for module in (connection_history, getattr(traffic, "active_clients", None)):
-            if module is not None and hasattr(module, "fetch_awg2_peers_for_adapter"):
-                module.fetch_awg2_peers_for_adapter = fetch_awg2_peers_for_adapter
-    except Exception:
-        pass
-    return "ок"
+    rebound = _rebind(original_fetch, fetch_awg2_peers_for_adapter, "fetch_awg2_peers_for_adapter")
+    return f"ок (перевешено в {rebound} модулях)"
 
 
 def _patch_active_web_session() -> str:
@@ -308,7 +318,7 @@ def apply_hermes_patches(app) -> None:
         results["cache-epoch-middleware"] = "ок"
     except Exception as exc:  # noqa: BLE001
         results["cache-epoch-middleware"] = f"ошибка: {exc}"
-    logger.info("hermes-panel-patch: %s", results)
+    print(f"[patch-panel-perf] хуки: {results}", flush=True)
 '''
 
 MAIN_APPEND = f'''
