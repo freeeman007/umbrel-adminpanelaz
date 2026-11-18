@@ -322,6 +322,77 @@ class _CacheEpochMiddleware:
         await self.app(scope, receive, send)
 
 
+class _ThrottledLogger:
+    """Глушит повторяющиеся трейсбеки: одна строка на узел раз в 10 минут."""
+
+    def __init__(self, inner, ttl: float = 600.0):
+        self._inner = inner
+        self._ttl = ttl
+        self._seen: dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def exception(self, msg, *args, **kwargs):
+        key = f"{msg}|{args[:2]}"
+        now = time.monotonic()
+        with self._lock:
+            if self._seen.get(key, 0.0) > now:
+                return
+            self._seen[key] = now + self._ttl
+        try:
+            rendered = msg % args if args else msg
+        except Exception:  # noqa: BLE001
+            rendered = f"{msg} {args}"
+        self._inner.warning("%s (повтор молчим 10 мин)", rendered)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def _patch_cert_sync_quiet() -> str:
+    """Узел недоступен — не молотим 30-секундные таймауты и трейсбеки каждый цикл."""
+    from app.services import cert_sync_worker as csw
+
+    if getattr(csw, "hermes_cert_quiet", False):
+        return "уже включён"
+    original_sync = getattr(csw, "_sync_node", None)
+    original_load = getattr(csw, "load_cert_expiry_map", None)
+    if original_sync is None or original_load is None:
+        return "нет _sync_node/load_cert_expiry_map"
+
+    down: dict = {}
+    lock = threading.Lock()
+
+    def load_cert_expiry_map(adapter):
+        key = _adapter_key(adapter)
+        with lock:
+            if down.get(key, 0.0) > time.monotonic():
+                raise RuntimeError("узел недоступен: проверка сертификатов отложена")
+        try:
+            return original_load(adapter)
+        except Exception:
+            with lock:
+                down[key] = time.monotonic() + 300.0
+            raise
+
+    def _sync_node(db, node):
+        key = ""
+        try:
+            key = _adapter_key(csw.get_adapter_for_node(node))
+        except Exception:  # noqa: BLE001
+            key = ""
+        if key:
+            with lock:
+                if down.get(key, 0.0) > time.monotonic():
+                    return 0
+        return original_sync(db, node)
+
+    csw.load_cert_expiry_map = load_cert_expiry_map
+    csw._sync_node = _sync_node
+    csw.logger = _ThrottledLogger(csw.logger)
+    csw.hermes_cert_quiet = True
+    return "ок"
+
+
 class _ResponseCacheMiddleware:
     """Короткий кеш GET-ответов: фронт дёргает одни и те же данные пачкой."""
 
@@ -403,6 +474,7 @@ def apply_hermes_patches(app) -> None:
         ("local-ip-cache", _patch_local_ip_cache),
         ("awg2-negative-cache", _patch_awg2_negative_cache),
         ("active-web-session", _patch_active_web_session),
+        ("cert-sync-quiet", _patch_cert_sync_quiet),
     ):
         try:
             results[label] = func()
